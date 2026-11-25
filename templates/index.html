@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+  <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
+  <title>LEVEL UP — Your Personal Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">LEVEL<span>UP</span><i>.</i></a>
+      <div class="top-actions"><button id="installButton" class="button secondary install-button" hidden>＋ Install app</button><div class="top-note">YOUR ROUTINE. YOUR PROGRESS.</div></div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <p class="eyebrow">PERSONAL PRODUCTIVITY TRACKER</p>
+        <h1>Make today<br><span>count.</span></h1>
+        <p class="sub">Small actions. Consistent effort. Real progress.</p>
+      </div>
+      <div class="quote">
+        <span class="quote-label">TODAY'S REMINDER</span>
+        <p id="quoteText">“Discipline is choosing what you want most over what you want now.”</p>
+        <span class="quote-author">— A DAILY NOTE TO YOURSELF</span>
+      </div>
+    </section>
+
+    <section class="stats">
+      <article class="stat-card progress-card">
+        <div class="stat-label">DAILY PROGRESS</div>
+        <div class="progress-line"><div style="width: {{ percent }}%"></div></div>
+        <div class="stat-bottom"><strong>{{ percent }}%</strong><span>{{ done }} of {{ total }} tasks completed</span></div>
+      </article>
+      <article class="stat-card"><div class="stat-label">TASKS DONE</div><strong class="big-number">{{ done }}<small>/{{ total }}</small></strong><span class="muted">Today's completed tasks</span></article>
+      <article class="stat-card"><div class="stat-label">SELECTED DATE</div><strong class="date-number">{{ selected_day }}</strong><span class="muted">Plan one day at a time</span></article>
+    </section>
+
+    <section class="section-head">
+      <div><p class="eyebrow">YOUR PLAN</p><h2>Daily schedule</h2></div>
+      <form method="get" class="date-form">
+        <input type="date" name="day" value="{{ selected_day }}">
+        <button class="button secondary" type="submit">View day</button>
+      </form>
+    </section>
+
+    <section class="workspace">
+      <div class="task-panel">
+        <div class="panel-title"><h3>Tasks</h3><span class="muted">{{ tasks|length }} scheduled</span></div>
+        {% if tasks %}
+          {% for task in tasks %}
+          <div class="task-row {% if task.completed %}is-done{% endif %}">
+            <form method="post" action="{{ url_for('toggle_task', task_id=task.id) }}">
+              <button class="check" aria-label="Toggle task">{% if task.completed %}✓{% else %}{% endif %}</button>
+            </form>
+            <div class="task-info">
+              <strong>{{ task.title }}</strong>
+              <span>{{ task.category }}{% if task.scheduled_time %} · {{ task.scheduled_time }}{% endif %}</span>
+            </div>
+            <button class="icon-button" type="button" onclick="editTask({{ task.id }}, {{ task.title|tojson }}, {{ task.category|tojson }}, {{ task.scheduled_time|tojson }})" title="Edit">✎</button>
+            <form method="post" action="{{ url_for('delete_task', task_id=task.id) }}" onsubmit="return confirm('Delete this task?')">
+              <button class="icon-button delete" title="Delete">×</button>
+            </form>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty">No tasks for this date yet. Add your first task.</div>
+        {% endif %}
+      </div>
+
+      <aside class="add-panel">
+        <p class="eyebrow">CUSTOMIZE YOUR DAY</p>
+        <h3 id="formHeading">Add a task</h3>
+        <form method="post" action="{{ url_for('add_task') }}" id="taskForm">
+          <input type="hidden" name="active_date" value="{{ selected_day }}">
+          <label>Task name<input name="title" id="taskTitle" placeholder="e.g. Solve 2 DSA problems" required maxlength="160"></label>
+          <label>Category<select name="category" id="taskCategory">
+            <option>DSA</option><option>Data Science</option><option>Practice</option><option>English</option><option>Fitness</option><option>Class</option><option>Personal</option>
+          </select></label>
+          <label>Time (optional)<input type="time" name="scheduled_time" id="taskTime"></label>
+          <button class="button primary" id="saveButton" type="submit">＋ Add task</button>
+          <button class="button secondary hidden" id="cancelEdit" type="button" onclick="resetForm()">Cancel edit</button>
+        </form>
+        <p class="hint">You can create a different plan for any date. Your previous task records stay saved.</p>
+      </aside>
+    </section>
+
+    <footer>LEVEL UP <span>·</span> Keep showing up.</footer>
+  </main>
+  <script>
+    // Register the service worker so the hosted site can be installed as a PWA.
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/static/sw.js").catch(console.error);
+      });
+    }
+
+    // Show the install button when the browser says installation is available.
+    let installPrompt = null;
+    const installButton = document.getElementById("installButton");
+    window.addEventListener("beforeinstallprompt", event => {
+      event.preventDefault();
+      installPrompt = event;
+      installButton.hidden = false;
+    });
+    installButton.addEventListener("click", async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      installButton.hidden = true;
+    });
+
+    const quotes = [
+      "Discipline is choosing what you want most over what you want now.",
+      "Small progress every day adds up to big results.",
+      "You do not have to be perfect. You have to be consistent.",
+      "Your future is created by what you do today.",
+      "Start where you are. Use what you have. Do what you can."
+    ];
+    const dayNumber = Math.floor(Date.now() / 86400000);
+    document.getElementById("quoteText").textContent = "“" + quotes[dayNumber % quotes.length] + "”";
+
+    function editTask(id, title, category, time) {
+      const form = document.getElementById("taskForm");
+      form.action = `/tasks/${id}/edit`;
+      document.getElementById("taskTitle").value = title;
+      document.getElementById("taskCategory").value = category;
+      document.getElementById("taskTime").value = time;
+      document.getElementById("formHeading").textContent = "Edit task";
+      document.getElementById("saveButton").textContent = "Save changes";
+      document.getElementById("cancelEdit").classList.remove("hidden");
+      document.getElementById("taskTitle").focus();
+    }
+    function resetForm() {
+      const form = document.getElementById("taskForm");
+      form.action = "{{ url_for('add_task') }}";
+      form.reset();
+      document.getElementById("formHeading").textContent = "Add a task";
+      document.getElementById("saveButton").textContent = "＋ Add task";
+      document.getElementById("cancelEdit").classList.add("hidden");
+    }
+  </script>
+</body>
+</html>
